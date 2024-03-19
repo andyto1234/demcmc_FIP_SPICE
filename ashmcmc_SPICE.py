@@ -121,10 +121,12 @@ def calc_density(obs_ratio, dens_sav):
 def get_density(dataset, dens_sav='density_ratios_mg_9_706_02_749_54_.sav', desired_linenames = ['mg_9_706.02', 'mg_9_749.54']):
     # Process the solar map data to get the density
     print(f'------------------------------Calculating Density------------------------------')
+
     obs_dens = find_data(dataset, desired_linenames)
     obs_dens_ratio = obs_dens[:, :, 0] / obs_dens[:, :, 1]
     ldens = calc_density(obs_dens_ratio, dens_sav)
 
+    print(f'------------------------------Done------------------------------')
     return ldens
 
 
@@ -295,11 +297,13 @@ def main(filedir):
         process_num = 10
     else:
         process_num = 10
+    print(f'------------------------------Calculating Composition------------------------------')
 
     # Create a Pool of processes for parallel execution
     with Pool(processes=process_num) as pool:
         results = list(tqdm(pool.imap(process_pixel, args_list), total=len(args_list), desc="Processing Pixels"))
 
+    print(f'------------------------------Done------------------------------')
 
 def process_filedir(filedir):
     # Check if the filedir is already being processed
