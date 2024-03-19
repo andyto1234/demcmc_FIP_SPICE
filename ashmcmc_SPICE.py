@@ -118,7 +118,7 @@ def calc_density(obs_ratio, dens_sav):
 
     return obs_ratio
 
-def get_density(dataset, dens_sav='/Users/andysh.to/Script/Python_Script/demcmc_FIP_SPICE/density_ratios_mg_9_706_02_749_54_.sav', desired_linenames = ['mg_9_706.02', 'mg_9_749.54']):
+def get_density(dataset, dens_sav='density_ratios_mg_9_706_02_749_54_.sav', desired_linenames = ['mg_9_706.02', 'mg_9_749.54']):
     # Process the solar map data to get the density
     print(f'------------------------------Calculating Density------------------------------')
     obs_dens = find_data(dataset, desired_linenames)
