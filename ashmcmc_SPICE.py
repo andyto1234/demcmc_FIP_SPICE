@@ -290,7 +290,7 @@ def main(filedir):
     # Determine the operating system type (Linux or macOS)
     # Set the number of processes based on the operating system
     if platform.system() == "Linux":
-        process_num = 60  # above 64 seems to break the MSSL machine - probably due to no. cores = 64?
+        process_num = 50  # above 64 seems to break the MSSL machine - probably due to no. cores = 64?
     elif platform.system() == "Darwin":
         process_num = 10
     else:
