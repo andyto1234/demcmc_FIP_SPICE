@@ -166,7 +166,7 @@ def combine_emissivity(data):
 
     return result
 
-def read_emissivity_spice(ldens, abund_file = abund_file):
+def read_emissivity_spice(ldens, abund_file):
     # Read emissivity from .sav files
     # The abund file is the directory where the .sav files are stored - this is a bit weird
 
@@ -189,14 +189,14 @@ def emis_filter(emis, linenames, obs_Lines):
     return emis_sorted
 
 def mcmc_process(mcmc_lines: list[EmissionLine], temp_bins: TempBins, progress=False) -> np.ndarray:
-    # Perform MCMC process for the given MCMC lines and temperature bins
-    dem_result = predict_dem_emcee(mcmc_lines, temp_bins, nwalkers=200, nsteps=300, progress=progress, dem_guess=None)
-    dem_init = np.median([sample.values.value for num, sample in enumerate(dem_result.iter_binned_dems())], axis=0)
-    dem_result = predict_dem_emcee(mcmc_lines, temp_bins, nwalkers=200, nsteps=500, progress=progress,
-                                    dem_guess=dem_init)
-    dem_median = np.median([sample.values.value for num, sample in enumerate(dem_result.iter_binned_dems())],
-                            axis=0)
-
+    # Perform MCMC process for the given MCMC lines and temperature bins - Combination specific to SPICE
+    dem_result = predict_dem_emcee(mcmc_lines, temp_bins, nwalkers=200, nsteps=300, progress=True, dem_guess=None)
+    dem_median = np.median([sample.values.value for num, sample in enumerate(dem_result.iter_binned_dems())], axis=0)
+    for nstep in [300, 1000]:
+        dem_result = predict_dem_emcee(mcmc_lines, temp_bins, nwalkers=200, nsteps=nstep, progress=True,
+                                        dem_guess=dem_median)
+        dem_median = np.median([sample.values.value for num, sample in enumerate(dem_result.iter_binned_dems())],
+                                axis=0)
     return dem_median
 
 def calc_chi2(mcmc_lines: list[EmissionLine], dem_result: np.array, temp_bins: TempBins) -> float:
@@ -207,6 +207,10 @@ def calc_chi2(mcmc_lines: list[EmissionLine], dem_result: np.array, temp_bins: T
     chi2 = np.sum(((int_pred - int_obs) / sigma_intensity_obs) ** 2)
     return chi2
 
+def calc_percentage_diff(mcmc_lines, num, temp_bins, _dem_median):
+    percentage_diff = np.abs((mcmc_lines[num]._I_pred(temp_bins, _dem_median)-mcmc_lines[num].intensity_obs)/mcmc_lines[num].intensity_obs*100)
+    return percentage_diff
+
 
 def prep_spice_data(files):
     dataset, output_dir = process_solar_map(files)
@@ -216,6 +220,20 @@ def prep_spice_data(files):
     dataset = dataset.assign(ldens=(["y", "x"], ldens))
 
     return dataset, output_dir
+
+def emissionLine_setup(ind, emis, dataset, xpix, ypix, line, logt_interp):
+    mcmc_emis = ContFuncDiscrete(logt_interp*u.K, interp_emis_temp(emis[ind, :]) *u.cm**5 / u.K,
+                                name=line)
+    mcmc_intensity = dataset.data[ypix, xpix, ind]*1e3
+    mcmc_int_error = 0.3 * mcmc_intensity
+    emissionLine = EmissionLine(
+        mcmc_emis,
+        intensity_obs=mcmc_intensity,
+        sigma_intensity_obs=mcmc_int_error,
+        name=line
+    )
+    return emissionLine
+
 
 def process_pixel(args):
     xpix, dataset, output_dir = args
@@ -243,33 +261,35 @@ def process_pixel(args):
         binary_comp = -1
 
         for emis in [emis_photo, emis_coro_mg]:
-            for ind, line in enumerate(dataset.linenames):
+            for ind, line in enumerate(dataset.linenames): # setting the emissionLine variable
                 if chi2 == np.inf:
                     linenames_list.append(line)  # Append the list of MCMC lines to the list
-
-                if dataset.data[ypix, xpix, ind]*1e3 > 1 and ~np.all(emis[ind, :] == 0):
-                    mcmc_emis = ContFuncDiscrete(logt_interp*u.K, interp_emis_temp(emis[ind, :]) *u.cm**5 / u.K,
-                                                 name=line)
-                    mcmc_intensity = dataset.data[ypix, xpix, ind]*1e3
-                    mcmc_int_error = max(dataset.error[ypix, xpix, ind].values, 0.3 * mcmc_intensity)
-                    emissionLine = EmissionLine(
-                        mcmc_emis,
-                        intensity_obs=mcmc_intensity,
-                        sigma_intensity_obs=mcmc_int_error,
-                        name=line
-                    )
+                
+                # If the intensity is greater than 1 and the emissivity is not all zeros
+                if dataset.data[ypix, xpix, ind]*1e3 > 1 and ~np.all(emis[ind, :] == 0): 
+                    emissionLine = emissionLine_setup(ind, emis, dataset, xpix, ypix, line, logt_interp)
                     mcmc_lines.append(emissionLine)
 
-            _dem_median = mcmc_process(mcmc_lines, temp_bins)  # Run 2 MCMC processes and return the median DEM
-            _chi2 = calc_chi2(mcmc_lines, _dem_median, temp_bins)   # Calculate the temporary chi2 value
-            if _chi2 <= chi2*0.8:  # If the chi2 value is greater than the current chi2 value * 0.8
+            # Run 3 MCMC processes for SPICE and return the median DEM
+            _dem_median = mcmc_process(mcmc_lines, temp_bins)  
+            
+            # Calculate the temporary chi2 value
+            _chi2 = calc_chi2(mcmc_lines, _dem_median, temp_bins)   
+            
+            if 'mg' in [l.name.split('_')[0] for l in mcmc_lines]: # If Mg is inside the lines
+                if _chi2 <= chi2*0.8:  # If the chi2 value is greater than the current chi2 value * 0.8
+                    chi2 = _chi2  # Update the chi2 value
+                    dem_median = _dem_median
+                    binary_comp += 1  # Update the binary composition value to photospheric or coronal
+                elif _chi2 > chi2*0.8 and _chi2 < chi2*1.2:
+                    chi2 = _chi2  # Update the chi2 value
+                    dem_median = _dem_median
+                    binary_comp += 0.5  # Update the binary composition value to photospheric or coronal
+            else: # If Mg is not inside the lines
                 chi2 = _chi2  # Update the chi2 value
                 dem_median = _dem_median
-                binary_comp += 1  # Update the binary composition value to photospheric or coronal
-            elif _chi2 > chi2*0.8 and _chi2 < chi2*1.2:
-                chi2 = _chi2  # Update the chi2 value
-                dem_median = _dem_median
-                binary_comp += 0.5  # Update the binary composition value to photospheric or coronal
+                binary_comp = np.nan  # Update the binary composition value to photospheric or coronal
+                break
 
         dem_results.append(dem_median)
         chi2_results.append(chi2)
