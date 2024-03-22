@@ -190,10 +190,10 @@ def emis_filter(emis, linenames, obs_Lines):
 
 def mcmc_process(mcmc_lines: list[EmissionLine], temp_bins: TempBins, progress=False) -> np.ndarray:
     # Perform MCMC process for the given MCMC lines and temperature bins - Combination specific to SPICE
-    dem_result = predict_dem_emcee(mcmc_lines, temp_bins, nwalkers=200, nsteps=300, progress=True, dem_guess=None)
+    dem_result = predict_dem_emcee(mcmc_lines, temp_bins, nwalkers=200, nsteps=300, progress=progress, dem_guess=None)
     dem_median = np.median([sample.values.value for num, sample in enumerate(dem_result.iter_binned_dems())], axis=0)
     for nstep in [300, 1000]:
-        dem_result = predict_dem_emcee(mcmc_lines, temp_bins, nwalkers=200, nsteps=nstep, progress=True,
+        dem_result = predict_dem_emcee(mcmc_lines, temp_bins, nwalkers=200, nsteps=nstep, progress=progress,
                                         dem_guess=dem_median)
         dem_median = np.median([sample.values.value for num, sample in enumerate(dem_result.iter_binned_dems())],
                                 axis=0)
@@ -275,7 +275,7 @@ def process_pixel(args):
             
             # Calculate the temporary chi2 value
             _chi2 = calc_chi2(mcmc_lines, _dem_median, temp_bins)   
-            
+
             if 'mg' in [l.name.split('_')[0] for l in mcmc_lines]: # If Mg is inside the lines
                 if _chi2 <= chi2*0.8:  # If the chi2 value is greater than the current chi2 value * 0.8
                     chi2 = _chi2  # Update the chi2 value
