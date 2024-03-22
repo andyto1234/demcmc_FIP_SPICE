@@ -28,7 +28,7 @@ def process_solar_map(files: list, rebinx=3, rebiny=3):
 
     y_dim = sunpy.map.Map(files[0])[0].dimensions[1].value
     x_dim = sunpy.map.Map(files[0])[0].dimensions[0].value
-    output_dir = 'spice_'+sunpy.map.Map(files[0])[0].date_average.value.split('.')[0].replace(':','_')+ '/'
+    output_dir = 'results/spice_'+sunpy.map.Map(files[0])[0].date_average.value.split('.')[0].replace(':','_')+ '/'
 
     # Check if the directory exists, and create it if it doesn't
     Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -41,6 +41,7 @@ def process_solar_map(files: list, rebinx=3, rebiny=3):
     filenum = 0
     # Create a blank cube to store solar map data
     blank = np.zeros((int(y_dim), int(x_dim), len(files)))
+    blank_error = np.zeros((int(y_dim), int(x_dim), len(files)))
 
     wavelengths = []
     ions = []
@@ -48,7 +49,9 @@ def process_solar_map(files: list, rebinx=3, rebiny=3):
     for num, file in enumerate(files):
         print(file)
         solar_map = sunpy.map.Map(file)[0]
+        solar_map_error = sunpy.map.Map(file)[1]
         blank[:, :, num] = solar_map.data
+        blank_error[:, :, num] = solar_map_error.data
         wavelengths.append(solar_map.meta['wavelength'])
         ions.append(solar_map.meta['ion'])
 
@@ -58,7 +61,8 @@ def process_solar_map(files: list, rebinx=3, rebiny=3):
     # Create an xarray Dataset
     dataset = xr.Dataset(
         data_vars=dict(
-            data=(["y", "x", "wavelength"], blank)
+            data=(["y", "x", "wavelength"], blank),
+            error=(["y", "x", "wavelength"], blank_error)  # Add the error data variable
         ),
         coords=dict(
             y=np.arange(y_dim),
@@ -84,7 +88,7 @@ def process_solar_map(files: list, rebinx=3, rebiny=3):
 
     return rebinned_ds, output_dir
 
-def find_data(dataset, desire_linenames):
+def find_data(dataset, desire_linenames, option = 'data'):
     # Find the indices of the desired linenames in the linenames list
     indices = [dataset.linenames.values.tolist().index(linename) for linename in desire_linenames]
 
@@ -92,7 +96,10 @@ def find_data(dataset, desire_linenames):
     data_filtered = dataset.isel(wavelength=indices)
 
     # Access the filtered data
-    filtered_dataArray = data_filtered['data'].values  # Get the NumPy array
+    if option == 'data':
+        filtered_dataArray = data_filtered['data'].values # Get the NumPy array
+    elif option == 'error':
+        filtered_dataArray = data_filtered['error'].values
 
     return filtered_dataArray
 
@@ -120,12 +127,11 @@ def calc_density(obs_ratio, dens_sav):
 
 def get_density(dataset, dens_sav='density_ratios_mg_9_706_02_749_54_.sav', desired_linenames = ['mg_9_706.02', 'mg_9_749.54']):
     # Process the solar map data to get the density
-    print(f'------------------------------Calculating Density------------------------------')
-
-    obs_dens = find_data(dataset, desired_linenames)
+    print(f'------------------------------Calculating Density------------------------------\n')
+    print(f'Calculating density for {desired_linenames[0]} and {desired_linenames[1]}\n')
+    obs_dens = find_data(dataset, desired_linenames, option = 'data')
     obs_dens_ratio = obs_dens[:, :, 0] / obs_dens[:, :, 1]
     ldens = calc_density(obs_dens_ratio, dens_sav)
-
     print(f'------------------------------Done------------------------------')
     return ldens
 
@@ -160,7 +166,7 @@ def combine_emissivity(data):
 
     return result
 
-def read_emissivity_spice(ldens, abund_file = 'emissivities_sun_photospheric_2015_scott'):
+def read_emissivity_spice(ldens, abund_file = abund_file):
     # Read emissivity from .sav files
     # The abund file is the directory where the .sav files are stored - this is a bit weird
 
@@ -182,11 +188,11 @@ def emis_filter(emis, linenames, obs_Lines):
         emis_sorted[ind, :] = emis[np.where(linenames == line)]
     return emis_sorted
 
-def mcmc_process(mcmc_lines: list[EmissionLine], temp_bins: TempBins) -> np.ndarray:
+def mcmc_process(mcmc_lines: list[EmissionLine], temp_bins: TempBins, progress=False) -> np.ndarray:
     # Perform MCMC process for the given MCMC lines and temperature bins
-    dem_result = predict_dem_emcee(mcmc_lines, temp_bins, nwalkers=200, nsteps=300, progress=False, dem_guess=None)
+    dem_result = predict_dem_emcee(mcmc_lines, temp_bins, nwalkers=200, nsteps=300, progress=progress, dem_guess=None)
     dem_init = np.median([sample.values.value for num, sample in enumerate(dem_result.iter_binned_dems())], axis=0)
-    dem_result = predict_dem_emcee(mcmc_lines, temp_bins, nwalkers=200, nsteps=500, progress=False,
+    dem_result = predict_dem_emcee(mcmc_lines, temp_bins, nwalkers=200, nsteps=500, progress=progress,
                                     dem_guess=dem_init)
     dem_median = np.median([sample.values.value for num, sample in enumerate(dem_result.iter_binned_dems())],
                             axis=0)
@@ -241,12 +247,11 @@ def process_pixel(args):
                 if chi2 == np.inf:
                     linenames_list.append(line)  # Append the list of MCMC lines to the list
 
-                if dataset.data[ypix, xpix, ind] > 10 and ~np.all(emis[ind, :] == 0):
+                if dataset.data[ypix, xpix, ind]*1e3 > 1 and ~np.all(emis[ind, :] == 0):
                     mcmc_emis = ContFuncDiscrete(logt_interp*u.K, interp_emis_temp(emis[ind, :]) *u.cm**5 / u.K,
                                                  name=line)
-                    mcmc_intensity = dataset.data[ypix, xpix, ind]
-                    mcmc_int_error = 0.3 * mcmc_intensity
-
+                    mcmc_intensity = dataset.data[ypix, xpix, ind]*1e3
+                    mcmc_int_error = max(dataset.error[ypix, xpix, ind].values, 0.3 * mcmc_intensity)
                     emissionLine = EmissionLine(
                         mcmc_emis,
                         intensity_obs=mcmc_intensity,
@@ -256,10 +261,15 @@ def process_pixel(args):
                     mcmc_lines.append(emissionLine)
 
             _dem_median = mcmc_process(mcmc_lines, temp_bins)  # Run 2 MCMC processes and return the median DEM
-            if calc_chi2(mcmc_lines, _dem_median, temp_bins) < chi2*0.8:  # If the chi2 value is greater than the current chi2 value * 0.8
-                chi2 = calc_chi2(mcmc_lines, _dem_median, temp_bins)  # Update the chi2 value
+            _chi2 = calc_chi2(mcmc_lines, _dem_median, temp_bins)   # Calculate the temporary chi2 value
+            if _chi2 <= chi2*0.8:  # If the chi2 value is greater than the current chi2 value * 0.8
+                chi2 = _chi2  # Update the chi2 value
                 dem_median = _dem_median
                 binary_comp += 1  # Update the binary composition value to photospheric or coronal
+            elif _chi2 > chi2*0.8 and _chi2 < chi2*1.2:
+                chi2 = _chi2  # Update the chi2 value
+                dem_median = _dem_median
+                binary_comp += 0.5  # Update the binary composition value to photospheric or coronal
 
         dem_results.append(dem_median)
         chi2_results.append(chi2)
