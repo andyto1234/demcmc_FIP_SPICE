@@ -128,7 +128,7 @@ def calc_density(obs_ratio, dens_sav):
 def get_density(dataset, dens_sav='density_ratios_mg_9_706_02_749_54_.sav', desired_linenames = ['mg_9_706.02', 'mg_9_749.54']):
     # Process the solar map data to get the density
     print(f'------------------------------Calculating Density------------------------------\n')
-    print(f'Calculating density for {desired_linenames[0]} and {desired_linenames[1]}\n')
+    print(f'Calculating Density Using {desired_linenames[0]} and {desired_linenames[1]}\n')
     obs_dens = find_data(dataset, desired_linenames, option = 'data')
     obs_dens_ratio = obs_dens[:, :, 0] / obs_dens[:, :, 1]
     ldens = calc_density(obs_dens_ratio, dens_sav)
@@ -275,6 +275,7 @@ def process_pixel(args):
                 _dem_median = mcmc_process(mcmc_lines, temp_bins)  
                 
                 # Calculate the temporary chi2 value
+                print(mcmc_lines)
                 _chi2 = calc_chi2(mcmc_lines, _dem_median, temp_bins)   
                 if 'mg' in [l.name.split('_')[0] for l in mcmc_lines]: # If Mg is inside the lines
                     if _chi2 <= chi2*0.8:  # If the chi2 value is greater than the current chi2 value * 0.8
@@ -337,8 +338,6 @@ def main(filedir):
     # Create a Pool of processes for parallel execution
     with Pool(processes=process_num) as pool:
         results = list(tqdm(pool.imap(process_pixel, args_list), total=len(args_list), desc="Processing Pixels"))
-
-    print(f'------------------------------Done------------------------------')
 
 def process_filedir(filedir):
     # Check if the filedir is already being processed
