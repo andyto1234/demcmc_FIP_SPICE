@@ -259,6 +259,7 @@ def process_pixel(args):
         temp_bins = TempBins(logt_interp * u.K)
         chi2 = np.inf
         binary_comp = -1
+        _dem_median = np.zeros(temp_bins.bin_centers.shape) # in case nan in all lines
 
         for emis in [emis_photo, emis_coro_mg]:
             for ind, line in enumerate(dataset.linenames): # setting the emissionLine variable
@@ -270,26 +271,34 @@ def process_pixel(args):
                     emissionLine = emissionLine_setup(ind, emis, dataset, xpix, ypix, line, logt_interp)
                     mcmc_lines.append(emissionLine)
 
-            # Run 3 MCMC processes for SPICE and return the median DEM
-            _dem_median = mcmc_process(mcmc_lines, temp_bins)  
-            
-            # Calculate the temporary chi2 value
-            _chi2 = calc_chi2(mcmc_lines, _dem_median, temp_bins)   
-            print(mcmc_lines)
-            if 'mg' in [l.name.split('_')[0] for l in mcmc_lines]: # If Mg is inside the lines
-                if _chi2 <= chi2*0.8:  # If the chi2 value is greater than the current chi2 value * 0.8
+            if len(mcmc_lines)>0:
+                # Run 3 MCMC processes for SPICE and return the median DEM
+                _dem_median = mcmc_process(mcmc_lines, temp_bins)  
+                
+                # Calculate the temporary chi2 value
+                _chi2 = calc_chi2(mcmc_lines, _dem_median, temp_bins)   
+                print(mcmc_lines)
+                if 'mg' in [l.name.split('_')[0] for l in mcmc_lines]: # If Mg is inside the lines
+                    if _chi2 <= chi2*0.8:  # If the chi2 value is greater than the current chi2 value * 0.8
+                        chi2 = _chi2  # Update the chi2 value
+                        dem_median = _dem_median
+                        binary_comp += 1  # Update the binary composition value to photospheric or coronal
+                    elif _chi2 > chi2*0.8 and _chi2 < chi2*1.2:
+                        chi2 = _chi2  # Update the chi2 value
+                        dem_median = _dem_median
+                        binary_comp += 0.5  # Update the binary composition value to photospheric or coronal
+                else: # If Mg is not inside the lines
                     chi2 = _chi2  # Update the chi2 value
                     dem_median = _dem_median
-                    binary_comp += 1  # Update the binary composition value to photospheric or coronal
-                elif _chi2 > chi2*0.8 and _chi2 < chi2*1.2:
-                    chi2 = _chi2  # Update the chi2 value
-                    dem_median = _dem_median
-                    binary_comp += 0.5  # Update the binary composition value to photospheric or coronal
-            else: # If Mg is not inside the lines
+                    binary_comp = np.nan  # Update the binary composition value to photospheric or coronal
+
+            else: # If no item in mcmc_lines
                 chi2 = _chi2  # Update the chi2 value
                 dem_median = _dem_median
                 binary_comp = np.nan  # Update the binary composition value to photospheric or coronal
                 break
+
+
 
         dem_results.append(dem_median)
         chi2_results.append(chi2)
