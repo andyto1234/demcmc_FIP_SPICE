@@ -7,6 +7,7 @@ from scipy.io import readsav
 import astropy.units as u
 from tqdm import tqdm
 from pathlib import Path
+import glob
 
 from multiprocessing import Pool
 import platform
@@ -310,34 +311,22 @@ def process_pixel(args):
              lines_used=linenames_list, logt=np.array(logt_interp), comp_result=comp_result)
 
 
-def main(filedir):
-    import glob
-
+def main(filedir, num_cores):
     # List all the files in the directory
+
     files = sorted(glob.glob(f'{filedir}/*int*'))
-
     output_dir = Path(files[0]).parent
-
     dataset, output_dir = prep_spice_data(files)  # get all intensity data and density data into xarray format
 
     # Generate a list of arguments for process_pixel function
     args_list = [(xpix, dataset, output_dir) for xpix in range(dataset.data[:, :, 0].shape[1])]
 
-    # Determine the operating system type (Linux or macOS)
-    # Set the number of processes based on the operating system
-    if platform.system() == "Linux":
-        process_num = 50  # above 64 seems to break the MSSL machine - probably due to no. cores = 64?
-    elif platform.system() == "Darwin":
-        process_num = 10
-    else:
-        process_num = 10
     print(f'\n------------------------------Calculating Composition------------------------------')
-
     # Create a Pool of processes for parallel execution
-    with Pool(processes=process_num) as pool:
+    with Pool(processes=num_cores) as pool:
         results = list(tqdm(pool.imap(process_pixel, args_list), total=len(args_list), desc="Processing Pixels"))
 
-def process_filedir(filedir):
+def process_filedir(filedir, num_cores):
     # Check if the filedir is already being processed
     if filedir.endswith('[processing]'):
         print(f"Skipping {filedir} as it is already being processed.")
@@ -355,7 +344,7 @@ def process_filedir(filedir):
                 file.write(line)
 
     # Process the filedir
-    main(filedir)
+    main(filedir, num_cores)
 
     # Remove the [processing] tag from the filedir
     with open(args.config_file, 'r') as file:
@@ -370,15 +359,29 @@ def process_filedir(filedir):
 
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser(description='Process SPICE data.')
     parser.add_argument('config_file', type=str, help='Path to the configuration file.')
+    parser.add_argument('--cores', type=int, default=None, help='Number of cores to use for processing.')
     args = parser.parse_args()
 
     # Read the filedirs from the configuration file
     with open(args.config_file, 'r') as file:
         filedirs = [line.strip() for line in file.readlines()]
 
+    # Determine the number of cores to use
+    if args.cores is not None:
+        num_cores = args.cores
+    else:
+        if platform.system() == "Linux":
+            num_cores = 50  # above 64 seems to break the MSSL machine - probably due to no. cores = 64?
+        elif platform.system() == "Darwin":
+            num_cores = 10
+        else:
+            num_cores = 10
+
     # Process each filedir
     for filedir in filedirs:
-        process_filedir(filedir)
+        process_filedir(filedir, num_cores)
+T
         

@@ -10,7 +10,6 @@ import numpy as np
 import os
 import re
 
-
 def calc_chi2(mcmc_lines: list[EmissionLine], dem_result: np.array, temp_bins: TempBins) -> float:
     # Calculate the chi-square value for the given MCMC lines, DEM result, and temperature bins
     int_obs = np.array([line.intensity_obs for line in mcmc_lines])
@@ -58,3 +57,11 @@ def interp_emis_temp(original_array):
     new_indices = np.linspace(0, len(original_array) - 1, new_size)
     interpolated_array = np.interp(new_indices, np.arange(len(original_array)), original_array)
     return interpolated_array
+
+def get_unoccupied_cores(threshold=10):
+    import psutil
+
+    # Get the number of unoccupied cores on the CPU
+    cpu_percent = psutil.cpu_percent(percpu=True)
+    unoccupied_cores_num = len([i for i, percent in enumerate(cpu_percent) if percent < threshold])
+    return unoccupied_cores_num
