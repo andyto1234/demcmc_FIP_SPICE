@@ -132,7 +132,6 @@ def get_density(dataset, dens_sav='density_ratios_mg_9_706_02_749_54_.sav', desi
     obs_dens = find_data(dataset, desired_linenames, option = 'data')
     obs_dens_ratio = obs_dens[:, :, 0] / obs_dens[:, :, 1]
     ldens = calc_density(obs_dens_ratio, dens_sav)
-    print(f'------------------------------Done------------------------------')
     return ldens
 
 
@@ -222,9 +221,9 @@ def prep_spice_data(files):
     return dataset, output_dir
 
 def emissionLine_setup(ind, emis, dataset, xpix, ypix, line, logt_interp):
-    mcmc_emis = ContFuncDiscrete(logt_interp*u.K, interp_emis_temp(emis[ind, :]) *u.cm**5 / u.K,
-                                name=line)
-    mcmc_intensity = dataset.data[ypix, xpix, ind]*1e3
+    mcmc_emis = ContFuncDiscrete(logt_interp*u.K, interp_emis_temp(emis[ind, :]) * u.cm**5 / u.K,
+                                 name=line)
+    mcmc_intensity = dataset.data[ypix, xpix, ind].values*1e3
     mcmc_int_error = 0.3 * mcmc_intensity
     emissionLine = EmissionLine(
         mcmc_emis,
