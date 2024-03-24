@@ -261,7 +261,7 @@ def process_pixel(args):
         binary_comp = -1
 
         for emis in [emis_photo, emis_coro_mg]:
-            for ind, line in enumerate(dataset.linenames): # setting the emissionLine variable
+            for ind, line in enumerate(dataset.linenames.values): # setting the emissionLine variable
                 if chi2 == np.inf:
                     linenames_list.append(line)  # Append the list of MCMC lines to the list
                 
