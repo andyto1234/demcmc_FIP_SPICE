@@ -274,7 +274,6 @@ def process_pixel(args):
                 _dem_median = mcmc_process(mcmc_lines, temp_bins)  
                 
                 # Calculate the temporary chi2 value
-                print(mcmc_lines)
                 _chi2 = calc_chi2(mcmc_lines, _dem_median, temp_bins)   
                 if 'mg' in [l.name.split('_')[0] for l in mcmc_lines]: # If Mg is inside the lines
                     if _chi2 <= chi2*0.8:  # If the chi2 value is greater than the current chi2 value * 0.8
@@ -332,7 +331,7 @@ def main(filedir):
         process_num = 10
     else:
         process_num = 10
-    print(f'------------------------------Calculating Composition------------------------------')
+    print(f'\n------------------------------Calculating Composition------------------------------')
 
     # Create a Pool of processes for parallel execution
     with Pool(processes=process_num) as pool:
