@@ -276,7 +276,6 @@ def process_pixel(args):
                 
                 # Calculate the temporary chi2 value
                 _chi2 = calc_chi2(mcmc_lines, _dem_median, temp_bins)   
-                print(mcmc_lines)
                 if 'mg' in [l.name.split('_')[0] for l in mcmc_lines]: # If Mg is inside the lines
                     if _chi2 <= chi2*0.8:  # If the chi2 value is greater than the current chi2 value * 0.8
                         chi2 = _chi2  # Update the chi2 value
