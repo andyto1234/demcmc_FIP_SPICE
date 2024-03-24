@@ -383,5 +383,5 @@ if __name__ == "__main__":
     # Process each filedir
     for filedir in filedirs:
         process_filedir(filedir, num_cores)
-T
+
         
