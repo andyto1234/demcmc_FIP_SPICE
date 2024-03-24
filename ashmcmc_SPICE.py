@@ -298,8 +298,6 @@ def process_pixel(args):
                 binary_comp = np.nan  # Update the binary composition value to photospheric or coronal
                 break
 
-
-
         dem_results.append(dem_median)
         chi2_results.append(chi2)
         ycoords_out.append(ypix)
