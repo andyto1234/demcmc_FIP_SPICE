@@ -259,7 +259,6 @@ def process_pixel(args):
         temp_bins = TempBins(logt_interp * u.K)
         chi2 = np.inf
         binary_comp = -1
-        _dem_median = np.zeros(temp_bins.bin_centers.shape) # in case nan in all lines
 
         for emis in [emis_photo, emis_coro_mg]:
             for ind, line in enumerate(dataset.linenames): # setting the emissionLine variable
@@ -292,9 +291,9 @@ def process_pixel(args):
                     dem_median = _dem_median
                     binary_comp = np.nan  # Update the binary composition value to photospheric or coronal
 
-            else: # If no item in mcmc_lines
-                chi2 = _chi2  # Update the chi2 value
-                dem_median = _dem_median
+            else: # If no item in mcmc_lines -  No data available to do any DEM
+                chi2 = np.inf  # Update the chi2 value
+                dem_median = np.zeros(temp_bins.bin_centers.shape)
                 binary_comp = np.nan  # Update the binary composition value to photospheric or coronal
                 break
 
