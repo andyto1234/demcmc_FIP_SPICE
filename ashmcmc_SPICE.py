@@ -13,6 +13,7 @@ from multiprocessing import Pool
 import platform
 import re
 
+# This code is not very thought through but it works LOL
 
 from demcmc import (
     EmissionLine,
@@ -327,6 +328,8 @@ def main(filedir, num_cores):
     # Create a Pool of processes for parallel execution
     with Pool(processes=num_cores) as pool:
         results = list(tqdm(pool.imap(process_pixel, args_list), total=len(args_list), desc="Processing Pixels"))
+    
+    return output_dir
 
 def process_filedir(filedir, num_cores):
     # Check if the filedir is already being processed
@@ -346,7 +349,7 @@ def process_filedir(filedir, num_cores):
                 file.write(line)
 
     # Process the filedir
-    main(filedir, num_cores)
+    output_dir = main(filedir, num_cores)
 
     # Remove the [processing] tag from the filedir
     with open(args.config_file, 'r') as file:
@@ -358,6 +361,8 @@ def process_filedir(filedir, num_cores):
                 file.write(f"{filedir}\n")
             else:
                 file.write(line)
+    
+    return output_dir
 
 def combine_dem_files(output_dir, dataset):
     # List all the dem.npz files in the dem_columns directory
