@@ -351,7 +351,6 @@ def process_filedir(filedir, num_cores):
     # Process the filedir
 
     output_dir = main(filedir, num_cores)
-    print(output_dir)
 
     # Remove the [processing] tag from the filedir
     with open(args.config_file, 'r') as file:
@@ -363,7 +362,6 @@ def process_filedir(filedir, num_cores):
                 file.write(f"{filedir}\n")
             else:
                 file.write(line)
-    print(output_dir)
     return output_dir
 
 def combine_dem_files(output_dir, dataset):
@@ -376,6 +374,7 @@ def combine_dem_files(output_dir, dataset):
 
     composition_combined = np.zeros((num_y, num_x))
     chi2_combined = np.zeros((num_y, num_x))
+    no_lines = np.zeros((num_y, num_x))
     
     # Iterate over each dem.npz file
     for dem_file in dem_files:
@@ -391,10 +390,12 @@ def combine_dem_files(output_dir, dataset):
         # Assign the data to the combined arrays at the corresponding xpix
         chi2_combined[:, xpix] = data['chi2']
         composition_combined[:, xpix] = data['comp_result']
+        no_lines[:, xpix] = data['linenames_list']
 
     # Add the combined data variables to the dataset
     dataset = dataset.assign(chi2=(["y", "x"], chi2_combined))
     dataset = dataset.assign(composition=(["y", "x"], composition_combined))
+    dataset = dataset.assign(no_lines=(["y", "x"], no_lines))
 
     # Save the updated dataset to a new file
     output_file = f'{output_dir}/{Path(output_dir).name}_combined_results.nc'
