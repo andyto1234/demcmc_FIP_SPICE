@@ -290,7 +290,7 @@ def process_pixel(args):
                     else: # If Mg is not inside the lines
                         chi2 = _chi2  # Update the chi2 value
                         dem_median = _dem_median
-                        binary_comp = np.nan  # Update the binary composition value to photospheric or coronal
+                        binary_comp = np.nan  # Update the binary composition value to nan
 
                 else: # If no item in mcmc_lines -  No data available to do any DEM
                     chi2 = np.inf  # Update the chi2 value
@@ -301,13 +301,13 @@ def process_pixel(args):
             dem_results.append(dem_median)
             chi2_results.append(chi2)
             ycoords_out.append(ypix)
-            linenames_list.append(mcmc_lines)
+            linenames_list.append(len(mcmc_lines))
             comp_result.append(binary_comp)
 
         dem_results = np.array(dem_results)
         chi2_results = np.array(chi2_results)
         comp_result = np.array(comp_result)
-        linenames_list = np.array(linenames_list, dtype=object)
+        linenames_list = np.array(linenames_list)
 
         np.savez(output_file, dem_results=dem_results, chi2=chi2_results, ycoords_out=ycoords_out,
                 lines_used=linenames_list, logt=np.array(logt_interp), comp_result=comp_result)
@@ -371,19 +371,12 @@ def combine_dem_files(output_dir, dataset):
     dem_files = sorted(glob.glob(f'{output_dir}/dem_columns/dem*.npz'))
 
     # Get the dimensions from the first file and the dataset
-    first_file = np.load(dem_files[0])
-    num_y = first_file['dem_results'].shape[0]
-    num_temp_bins = first_file['dem_results'].shape[1]
-    logt = first_file['logt']
     num_x = dataset.x.size
+    num_y = dataset.y.size
 
-    # Initialize arrays to store the combined data
-    dem_combined = np.zeros((num_y, num_x, num_temp_bins))
+    composition_combined = np.zeros((num_y, num_x))
     chi2_combined = np.zeros((num_y, num_x))
-    lines_used_combined = np.empty((num_y, num_x), dtype=object)
-    comp_result_combined = np.zeros((num_y, num_x))
-    ycoords_out_combined = np.zeros((num_y, num_x))
-
+    
     # Iterate over each dem.npz file
     for dem_file in dem_files:
         # Extract the xpix value from the filename
@@ -395,29 +388,16 @@ def combine_dem_files(output_dir, dataset):
 
         # Load the data from the file
         data = np.load(dem_file, allow_pickle=True)
-        dem_results = data['dem_results']
-        chi2 = data['chi2']
-        lines_used = data['lines_used']
-        comp_result = data['comp_result']
-        ycoords_out = data['ycoords_out']
-
         # Assign the data to the combined arrays at the corresponding xpix
-        dem_combined[:, xpix, :] = dem_results
-        chi2_combined[:, xpix] = chi2
-        lines_used_combined[:, xpix] = lines_used
-        comp_result_combined[:, xpix] = comp_result
-        ycoords_out_combined[:, xpix] = ycoords_out
+        chi2_combined[:, xpix] = data['chi2']
+        composition_combined[:, xpix] = data['comp_result']
 
     # Add the combined data variables to the dataset
-    dataset['dem'] = (('y', 'x', 'temp_bins'), dem_combined)
-    dataset['chi2'] = (('y', 'x'), chi2_combined)
-    dataset['lines_used'] = (('y', 'x'), lines_used_combined)
-    dataset['comp_result'] = (('y', 'x'), comp_result_combined)
-    dataset['ycoords_out'] = (('y', 'x'), ycoords_out_combined)
-    dataset['logt'] = (('temp_bins'), logt)
+    dataset = dataset.assign(chi2=(["y", "x"], chi2_combined))
+    dataset = dataset.assign(composition=(["y", "x"], composition_combined))
 
     # Save the updated dataset to a new file
-    output_file = f'{output_dir}/{Path(output_dir).name}_combined_master.nc'
+    output_file = f'{output_dir}/{Path(output_dir).name}_combined_results.nc'
     dataset.to_netcdf(output_file)
 
     print(f"Combined data added to the dataset and saved to: {output_file}")
