@@ -2,7 +2,7 @@ import xarray as xr
 from astropy import units as u
 import numpy as np
 import sunpy.map
-from mcmc_utils import find_matching_file, interp_emis_temp
+from mcmc_utils import find_matching_file, interp_emis_temp, check_dem_exists
 from scipy.io import readsav
 import astropy.units as u
 from tqdm import tqdm
@@ -11,6 +11,7 @@ import glob
 
 from multiprocessing import Pool
 import platform
+import re
 
 
 from demcmc import (
@@ -79,7 +80,6 @@ def process_solar_map(files: list, rebinx=3, rebiny=3):
 
     # Convert WCS object to a dictionary and add it as an attribute
     dataset.attrs["wcs"] = wcs_original.to_header_string()
-
 
     # Save the dataset to a file (optional)
     dataset.to_netcdf(output_dir+'fitted_data.nc')
@@ -246,69 +246,71 @@ def process_pixel(args):
     linenames_list = []
     comp_result = []
 
-    for ypix in tqdm(range(dataset.data[:, :, 0].shape[0])):
-        logt, emis_photo, linenames = read_emissivity_spice(dataset['ldens'][ypix, xpix], abund_file='spice_emissivities_sun_photospheric_2015_scott')
-        logt, emis_coro_mg, linenames = read_emissivity_spice(dataset['ldens'][ypix, xpix], abund_file='spice_emissivities_spice_sun_coronal_2015_scott_mg')
+    if not check_dem_exists(output_file): # Check if the file already exists
+        for ypix in tqdm(range(dataset.data[:, :, 0].shape[0])):
+            logt, emis_photo, linenames = read_emissivity_spice(dataset['ldens'][ypix, xpix], abund_file='spice_emissivities_sun_photospheric_2015_scott')
+            logt, emis_coro_mg, linenames = read_emissivity_spice(dataset['ldens'][ypix, xpix], abund_file='spice_emissivities_spice_sun_coronal_2015_scott_mg')
 
-        emis_photo = emis_filter(emis_photo, linenames, dataset.linenames)
-        emis_coro_mg = emis_filter(emis_coro_mg, linenames, dataset.linenames)
+            emis_photo = emis_filter(emis_photo, linenames, dataset.linenames)
+            emis_coro_mg = emis_filter(emis_coro_mg, linenames, dataset.linenames)
 
-        logt_interp = interp_emis_temp(logt.value)
+            logt_interp = interp_emis_temp(logt.value)
 
-        mcmc_lines = []
-        temp_bins = TempBins(logt_interp * u.K)
-        chi2 = np.inf
-        binary_comp = -1
+            mcmc_lines = []
+            temp_bins = TempBins(logt_interp * u.K)
+            chi2 = np.inf
+            binary_comp = -1
 
-        for emis in [emis_photo, emis_coro_mg]:
-            for ind, line in enumerate(dataset.linenames.values): # setting the emissionLine variable
-                if chi2 == np.inf:
-                    linenames_list.append(line)  # Append the list of MCMC lines to the list
-                
-                # If the intensity is greater than 1 and the emissivity is not all zeros
-                if dataset.data[ypix, xpix, ind]*1e3 > 1 and ~np.all(emis[ind, :] == 0): 
-                    emissionLine = emissionLine_setup(ind, emis, dataset, xpix, ypix, line, logt_interp)
-                    mcmc_lines.append(emissionLine)
+            for emis in [emis_photo, emis_coro_mg]:
+                for ind, line in enumerate(dataset.linenames.values): # setting the emissionLine variable
+                    if chi2 == np.inf:
+                        linenames_list.append(line)  # Append the list of MCMC lines to the list
+                    
+                    # If the intensity is greater than 1 and the emissivity is not all zeros
+                    if dataset.data[ypix, xpix, ind]*1e3 > 1 and ~np.all(emis[ind, :] == 0): 
+                        emissionLine = emissionLine_setup(ind, emis, dataset, xpix, ypix, line, logt_interp)
+                        mcmc_lines.append(emissionLine)
 
-            if len(mcmc_lines)>0:
-                # Run 3 MCMC processes for SPICE and return the median DEM
-                _dem_median = mcmc_process(mcmc_lines, temp_bins)  
-                
-                # Calculate the temporary chi2 value
-                _chi2 = calc_chi2(mcmc_lines, _dem_median, temp_bins)   
-                if 'mg' in [l.name.split('_')[0] for l in mcmc_lines]: # If Mg is inside the lines
-                    if _chi2 <= chi2*0.8:  # If the chi2 value is greater than the current chi2 value * 0.8
+                if len(mcmc_lines)>0:
+                    # Run 3 MCMC processes for SPICE and return the median DEM
+                    _dem_median = mcmc_process(mcmc_lines, temp_bins)  
+                    
+                    # Calculate the temporary chi2 value
+                    _chi2 = calc_chi2(mcmc_lines, _dem_median, temp_bins)   
+                    if 'mg' in [l.name.split('_')[0] for l in mcmc_lines]: # If Mg is inside the lines
+                        if _chi2 <= chi2*0.8:  # If the chi2 value is greater than the current chi2 value * 0.8
+                            chi2 = _chi2  # Update the chi2 value
+                            dem_median = _dem_median
+                            binary_comp += 1  # Update the binary composition value to photospheric or coronal
+                        elif _chi2 > chi2*0.8 and _chi2 < chi2*1.2:
+                            chi2 = _chi2  # Update the chi2 value
+                            dem_median = _dem_median
+                            binary_comp += 0.5  # Update the binary composition value to photospheric or coronal
+                    else: # If Mg is not inside the lines
                         chi2 = _chi2  # Update the chi2 value
                         dem_median = _dem_median
-                        binary_comp += 1  # Update the binary composition value to photospheric or coronal
-                    elif _chi2 > chi2*0.8 and _chi2 < chi2*1.2:
-                        chi2 = _chi2  # Update the chi2 value
-                        dem_median = _dem_median
-                        binary_comp += 0.5  # Update the binary composition value to photospheric or coronal
-                else: # If Mg is not inside the lines
-                    chi2 = _chi2  # Update the chi2 value
-                    dem_median = _dem_median
+                        binary_comp = np.nan  # Update the binary composition value to photospheric or coronal
+
+                else: # If no item in mcmc_lines -  No data available to do any DEM
+                    chi2 = np.inf  # Update the chi2 value
+                    dem_median = np.zeros(temp_bins.bin_centers.shape)
                     binary_comp = np.nan  # Update the binary composition value to photospheric or coronal
+                    break
 
-            else: # If no item in mcmc_lines -  No data available to do any DEM
-                chi2 = np.inf  # Update the chi2 value
-                dem_median = np.zeros(temp_bins.bin_centers.shape)
-                binary_comp = np.nan  # Update the binary composition value to photospheric or coronal
-                break
+            dem_results.append(dem_median)
+            chi2_results.append(chi2)
+            ycoords_out.append(ypix)
+            linenames_list.append(mcmc_lines)
+            comp_result.append(binary_comp)
 
-        dem_results.append(dem_median)
-        chi2_results.append(chi2)
-        ycoords_out.append(ypix)
-        linenames_list.append(mcmc_lines)
-        comp_result.append(binary_comp)
+        dem_results = np.array(dem_results)
+        chi2_results = np.array(chi2_results)
+        comp_result = np.array(comp_result)
+        linenames_list = np.array(linenames_list, dtype=object)
 
-    dem_results = np.array(dem_results)
-    chi2_results = np.array(chi2_results)
-    comp_result = np.array(comp_result)
-    linenames_list = np.array(linenames_list, dtype=object)
-
-    np.savez(output_file, dem_results=dem_results, chi2=chi2_results, ycoords_out=ycoords_out,
-             lines_used=linenames_list, logt=np.array(logt_interp), comp_result=comp_result)
+        np.savez(output_file, dem_results=dem_results, chi2=chi2_results, ycoords_out=ycoords_out,
+                lines_used=linenames_list, logt=np.array(logt_interp), comp_result=comp_result)
+    return output_dir
 
 
 def main(filedir, num_cores):
@@ -357,6 +359,62 @@ def process_filedir(filedir, num_cores):
             else:
                 file.write(line)
 
+def combine_dem_files(output_dir, dataset):
+    # List all the dem.npz files in the dem_columns directory
+    dem_files = sorted(glob.glob(f'{output_dir}/dem_columns/dem*.npz'))
+
+    # Get the dimensions from the first file and the dataset
+    first_file = np.load(dem_files[0])
+    num_y = first_file['dem_results'].shape[0]
+    num_temp_bins = first_file['dem_results'].shape[1]
+    logt = first_file['logt']
+    num_x = dataset.x.size
+
+    # Initialize arrays to store the combined data
+    dem_combined = np.zeros((num_y, num_x, num_temp_bins))
+    chi2_combined = np.zeros((num_y, num_x))
+    lines_used_combined = np.empty((num_y, num_x), dtype=object)
+    comp_result_combined = np.zeros((num_y, num_x))
+    ycoords_out_combined = np.zeros((num_y, num_x))
+
+    # Iterate over each dem.npz file
+    for dem_file in dem_files:
+        # Extract the xpix value from the filename
+        match = re.search(r'dem_(\d+)\.npz', dem_file)
+        if match:
+            xpix = int(match.group(1))
+        else:
+            raise ValueError(f"Invalid filename format: {dem_file}")
+
+        # Load the data from the file
+        data = np.load(dem_file)
+        dem_results = data['dem_results']
+        chi2 = data['chi2']
+        lines_used = data['lines_used']
+        comp_result = data['comp_result']
+        ycoords_out = data['ycoords_out']
+
+        # Assign the data to the combined arrays at the corresponding xpix
+        dem_combined[:, xpix, :] = dem_results
+        chi2_combined[:, xpix] = chi2
+        lines_used_combined[:, xpix] = lines_used
+        comp_result_combined[:, xpix] = comp_result
+        ycoords_out_combined[:, xpix] = ycoords_out
+
+    # Add the combined data variables to the dataset
+    dataset['dem'] = (('y', 'x', 'temp_bins'), dem_combined)
+    dataset['chi2'] = (('y', 'x'), chi2_combined)
+    dataset['lines_used'] = (('y', 'x'), lines_used_combined)
+    dataset['comp_result'] = (('y', 'x'), comp_result_combined)
+    dataset['ycoords_out'] = (('y', 'x'), ycoords_out_combined)
+    dataset['logt'] = (('temp_bins'), logt)
+
+    # Save the updated dataset to a new file
+    output_file = f'{output_dir}/{Path(output_dir).name}_combined_master.nc'
+    dataset.to_netcdf(output_file)
+
+    print(f"Combined data added to the dataset and saved to: {output_file}")
+
 if __name__ == "__main__":
     import argparse
 
@@ -382,6 +440,7 @@ if __name__ == "__main__":
 
     # Process each filedir
     for filedir in filedirs:
-        process_filedir(filedir, num_cores)
-
+        _output_dir = process_filedir(filedir, num_cores)
+        dataset = xr.open_dataset(_output_dir + 'fitted_data_rebinned.nc')
+        combine_dem_files(_output_dir, dataset)
         
