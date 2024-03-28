@@ -394,7 +394,7 @@ def combine_dem_files(output_dir, dataset):
             raise ValueError(f"Invalid filename format: {dem_file}")
 
         # Load the data from the file
-        data = np.load(dem_file)
+        data = np.load(dem_file, allow_pickle=True)
         dem_results = data['dem_results']
         chi2 = data['chi2']
         lines_used = data['lines_used']
