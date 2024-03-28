@@ -65,3 +65,9 @@ def get_unoccupied_cores(threshold=10):
     cpu_percent = psutil.cpu_percent(percpu=True)
     unoccupied_cores_num = len([i for i, percent in enumerate(cpu_percent) if percent < threshold])
     return unoccupied_cores_num
+
+def check_dem_exists(filename: str) -> bool:
+    # Check if the DEM file exists
+    from os.path import exists
+    return exists(filename)    
+
