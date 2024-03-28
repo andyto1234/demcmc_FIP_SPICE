@@ -448,7 +448,7 @@ if __name__ == "__main__":
     # Process each filedir
     for filedir in filedirs:
         output_dir = process_filedir(filedir, num_cores)
-        print(output_dir)
-        dataset = xr.open_dataset(output_dir + 'fitted_data_rebinned.nc')
-        combine_dem_files(output_dir, dataset)
-        
+        if output_dir is not None:
+            dataset = xr.open_dataset(output_dir + 'fitted_data_rebinned.nc')
+            combine_dem_files(output_dir, dataset)
+            
