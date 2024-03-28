@@ -311,7 +311,7 @@ def process_pixel(args):
 
         np.savez(output_file, dem_results=dem_results, chi2=chi2_results, ycoords_out=ycoords_out,
                 lines_used=linenames_list, logt=np.array(logt_interp), comp_result=comp_result)
-    return output_dir
+    # return output_dir
 
 
 def main(filedir, num_cores):
@@ -349,7 +349,9 @@ def process_filedir(filedir, num_cores):
                 file.write(line)
 
     # Process the filedir
+
     output_dir = main(filedir, num_cores)
+    print(output_dir)
 
     # Remove the [processing] tag from the filedir
     with open(args.config_file, 'r') as file:
@@ -361,7 +363,7 @@ def process_filedir(filedir, num_cores):
                 file.write(f"{filedir}\n")
             else:
                 file.write(line)
-    
+    print(output_dir)
     return output_dir
 
 def combine_dem_files(output_dir, dataset):
